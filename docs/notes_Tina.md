@@ -1,16 +1,16 @@
 ## Mandatory minimum
 
-## Basic Website Setup
+### Basic Website Setup
   - SPA (single page app) with Typescript frontend  
   - Runs in Docker with one command  
   - Works at least in Firefox, no visible errors  
 
-## Pong Game Basics
+### Pong Game Basics
   - Local Pong (2 players on same keyboard)  
   - Tournament system with aliases + matchmaking  
   - Same paddle speed for everyone  
 
-## Security
+### Security
   - Passwords hashed  
   - Protection against SQL injection / XSS  
   - HTTPS everywhere  
