@@ -1,10 +1,9 @@
 # My Recommended Modules
-
+(I deleted what we skipp, I didn't explained what we already added, others I explained at the end of the actual line)
 ## Web
   - Major module: Use a framework to build the backend - ADD
-  - Minor module: Use a framework or a toolkit to build the frontend - RESEARCH
-  - Minor module: Use a database for the backend -  YULIA: 10, JUAN:8
-  - Major module: Store the score of a tournament in the Blockchain - CAMILLE: 9, JUAN: 8
+  - Minor module: Use a framework or a toolkit to build the frontend - RESEARCH, React → Next.js - built on top of React (SSR/SSG, routing, data fetching, auth-friendly)
+  - Minor module: Use a database for the backend -  YULIA: 10, JUAN:8, kinda mandatory
 
 ## User Management
   - Major module: Standard user management, authentication, users across tournaments - YULIA OPTIONAL, CAMILLE
@@ -42,6 +41,11 @@
   - Major module: Replace basic Pong with server-side Pong and implement an API. - RESEARCH YULIA, CAMILLE
   - Major module: Enabling Pong gameplay via CLI against web users with API integration. - RESEARCH JUAN, TINA
 
+
+
+## Web
+  - Major module: Store the score of a tournament in the Blockchain - CAMILLE: 9, JUAN: 8
+
 ## Mandatory minimum
 
 A minimum of *7 major* modules is required. Two Minor Modules count as one Major Module.
@@ -69,7 +73,7 @@ A minimum of *7 major* modules is required. Two Minor Modules count as one Major
 - **Major: Backend framework** → Use something like Django, NestJS, or Express instead of plain PHP.  
 - **Minor: Frontend framework/toolkit** → Use React, Vue, or Angular to build the interface.  
 - **Minor: Database** → Store user info, match history, scores, etc.  
-- **Major: Blockchain scores** → Save tournament results on blockchain so they can’t be tampered with.  
+- **Major: Blockchain scores** → Save tournament results on blockchain so they can’t be manipulated.
 
 ### User Management
 - **Major: Standard user management** → Sign up, log in, password reset, and keep the same user across tournaments.  
