@@ -1,6 +1,6 @@
 ## Mandatory minimum
 
-A minimum of 7 major modules is required, Two Minor Modules count as one Major Module.
+A minimum of *7 major* modules is required. Two Minor Modules count as one Major Module.
 
 ### Basic Website Setup
   - SPA (single page app) with Typescript frontend (moving around doesn’t reload the whole page, instead, JavaScript updates only the part of the page that changes)
