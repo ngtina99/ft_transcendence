@@ -48,7 +48,7 @@
 | O7 | Multiple languages (i18n)               | 3               | 8,9                      |
 | O8 | Store tournament scores on Blockchain   | 11              | -                        |
 
-## 🫶 My Recommended Modules
+## My Recommended Modules 🫶
 (I explain my opinion at the end of every line)
 
 ### Web
@@ -75,7 +75,7 @@
   - Minor module: Add accessibility features for visually impaired users. - RESEARCH JUAN, TINA, almost nothing to do, easy to implement in the workflow
   - Minor module: Server-Side Rendering (SSR) integration. - RESEARCH CAMILLE, TINA, YULIA, it is a built-in in the framework as I mentioned beyond *"React → Next.js - built on top of React (SSR/SSG, routing, data fetching, auth-friendly)"*
 
-## 🤔 Only If Modules
+## Only If Modules 🤔
 ### Web
   - Major module: Store the score of a tournament in the Blockchain - CAMILLE: 9, JUAN: 8, really complex, but it wouldn't influence the workflow, probably just could be implemented close to the end of the project and then you can count with the time
 
@@ -97,7 +97,7 @@ complicated
 ### Accessibility
   - Minor module: Supports multiple languages. - RESEARCH CAMILLE, not so much extra work, not the most important but a really useful feature for accessibility
 
-## 🙅‍♀️ Not Recommended Modules
+## Not Recommended Modules 🙅‍♀️
 ### Graphics
   - Major module: Use advanced 3D techniques. - RESEARCH (JUAN), not so useful if none of us into graphics and time-consuming
 
