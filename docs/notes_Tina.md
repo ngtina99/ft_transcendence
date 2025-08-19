@@ -1,9 +1,9 @@
 # 📑 Table of Contents
 
 - [1. Development Roadmap](#development-roadmap)
-- [2. Optional Workstreams](#optional-workstreams)
+- [2. Supplementary Roadmap](#supplementary-roadmap)
 - [3. My Recommended Modules](#my-recommended-modules)
-- [4. Only If](#only-if-modules)
+- [4. Only If Modules](#only-if-modules)
 - [5. Not Recommended Modules](#not-recommended-modules)
 - [6. Mandatory Minimum](#mandatory-minimum)
 - [7. Modules Explanation](#modules-explanation)
@@ -32,7 +32,7 @@
 | 12 | Expanded browser compatibility     | 3,8,9           | —                        |
 
 
-# Optional Workstreams
+# Supplementary Roadmap
 
 | #O | Workstream                              | Must come after | Can run in parallel with |
 |----|-----------------------------------------|-----------------|--------------------------|
@@ -72,7 +72,7 @@
   - Minor module: Add accessibility features for visually impaired users. - RESEARCH JUAN, TINA, almost nothing to do, easy to implement in the workflow
   - Minor module: Server-Side Rendering (SSR) integration. - RESEARCH CAMILLE, TINA, YULIA, it is a built-in in the framework as I mentioned beyond *"React → Next.js - built on top of React (SSR/SSG, routing, data fetching, auth-friendly)"*
 
-## ONLY IF
+## Only If Modules
 ### Web
   - Major module: Store the score of a tournament in the Blockchain - CAMILLE: 9, JUAN: 8, really complex, but it wouldn't influence the workflow, probably just could be implemented close to the end of the project and then you can count with the time
 
@@ -94,7 +94,7 @@ complicated
 ### Accessibility
   - Minor module: Supports multiple languages. - RESEARCH CAMILLE, not so much extra work, not the most important but a really useful feature for accessibility
 
-## NOT RECOMMENDED MODULES
+## Not Recommended Modules
 ### Graphics
   - Major module: Use advanced 3D techniques. - RESEARCH (JUAN), not so useful if none of us into graphics and time-consuming
 
