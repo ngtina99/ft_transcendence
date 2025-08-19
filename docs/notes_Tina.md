@@ -117,7 +117,7 @@ complicated
   - Major module: Replace basic Pong with server-side Pong and implement an API. - RESEARCH YULIA, CAMILLE, too risky regarding the infrastructure
   - Major module: Enabling Pong gameplay via CLI against web users with API integration. - RESEARCH JUAN, TINA, I don't see it as useful
 
-## Mandatory minimum
+# Mandatory minimum
 
 A minimum of *7 major* modules is required. Two Minor Modules count as one Major Module.
 
