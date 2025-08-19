@@ -4,7 +4,7 @@
 - [1. Development Roadmap](#development-roadmap)
 - [2. Supplementary Roadmap](#supplementary-roadmap)
 - *read second from 3-5*
-- [3. My Recommended Modules 🫶](#my-recommended-modules-🫶)
+- [3. My Recommended Modules](#my-recommended-modules)
 - [4. Only If Modules](#only-if-modules)
 - [5. Not Recommended Modules](#not-recommended-modules)
 - *read first from 6-8*
@@ -48,7 +48,7 @@
 | O7 | Multiple languages (i18n)               | 3               | 8,9                      |
 | O8 | Store tournament scores on Blockchain   | 11              | -                        |
 
-## My Recommended Modules 🫶
+## My Recommended Modules
 (I explain my opinion at the end of every line)
 
 ### Web
