@@ -31,7 +31,8 @@
 | O8 | Store tournament scores on Blockchain   | 11              | -                        |
 
 ## My Recommended Modules
-(I deleted what we skipp, I didn't explained what we already added, others I explained at the end of the actual line)
+(I explain my opinion at the end of every line)
+
 ### Web
   - Major module: Use a framework to build the backend - ADDED
   - Minor module: Use a framework or a toolkit to build the frontend - RESEARCH, must write TypeScript, so we can use React → Next.js - built on top of React (SSR/SSG, routing, data fetching, auth-friendly)
