@@ -1,36 +1,34 @@
 # Build Order (strict deps + parallelism)
 
-1. **Backend framework (NestJS)**
-2. **Database (Postgres + Prisma)**
-3. **Frontend framework (Next.js + TS)**
-4. **DevOps: log management**
-5. **Auth: JWT + 2FA**
-6. **SSR integration patterns (confirm)**
-7. **Live chat (WebSockets)**
-8. **Responsive (all devices)**
-9. **Accessibility features (visually impaired)**
-10. **AI opponent**
-11. **User & game stats dashboards**
-12. **Expanded browser compatibility (BONUS)**
-
----
-
-## Parallelization Notes
-
-- **(3) Frontend framework** can start **in parallel with (1) Backend framework**.  
-- **(4) DevOps (log management)** can start as soon as **(1) Backend** has basic routes.  
-- **(5) Auth (JWT + 2FA)** requires **(2) Database** to be ready.  
-- **(7) Live chat** requires both **(5) Auth (JWT + 2FA)** and **(2) Database**.  
+| #  | Workstream                         | Must come after | Can run in parallel with |
+|----|------------------------------------|-----------------|--------------------------|
+| 0  | Project Foundations                | —               | —                        |
+| 1  | Backend framework (NestJS)         | 0               | 3                        |
+| 2  | Database (Postgres + Prisma)       | 0               | —                        |
+| 3  | Frontend framework (Next.js + TS)  | 0               | 1                        |
+| 4  | DevOps: log management             | 1               | 5, 8                     |
+| 5  | Auth: JWT + 2FA                    | 2               | 4, 8                     |
+| 6  | SSR integration patterns (confirm) | 1,3             | 4, 8                     |
+| 7  | Live chat (WebSockets)             | 2,5             | 8                        |
+| 8  | Responsive (all devices)           | 3               | 4,5,6,7                  |
+| 9  | Accessibility features             | 3               | 4,5,6,7,8                |
+| 10 | AI opponent                        | 1,2,5,7         | 11                       |
+| 11 | User & game stats dashboards       | 2,4,5,6         | 10                       |
+| 12 | Expanded browser compatibility     | 3,8,9           | —                        |
 
 
-Store tournament scores on Blockchain
-Multiplayer (>2 players)
-Game customization options
-Remote authentication (IdP/OAuth/SAML)
-WAF + Vault (secrets mgmt)
-GDPR toolkit (anonymize/local storage/delete)
-Microservices architecture
-Multiple languages (i18n)
+# Optional Workstreams
+
+| #O | Workstream                              | Must come after | Can run in parallel with |
+|----|-----------------------------------------|-----------------|--------------------------|
+| O1 | Multiplayer (>2 players)                | 2,5,7           | 8,10                     |
+| O2 | Game customization options              | 3,7             | 8,11                     |
+| O3 | Remote authentication (IdP/OAuth/SAML)  | 5               | 6,8                      |
+| O4 | WAF + Vault (secrets mgmt)              | 4               | 5,6,8                    |
+| O5 | GDPR toolkit (anonymize/local/delete)   | 2,5             | 11                       |
+| O6 | Microservices architecture              | 1,2,4,5,7       | 10,11                    |
+| O7 | Multiple languages (i18n)               | 3               | 8,9                      |
+| O8 | Store tournament scores on Blockchain   | 11              | -                        |
 
 ## My Recommended Modules
 (I deleted what we skipp, I didn't explained what we already added, others I explained at the end of the actual line)
