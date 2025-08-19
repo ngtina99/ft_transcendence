@@ -9,7 +9,7 @@
 - [5. Not Recommended Modules](#not-recommended-modules)
 - *read first from 6-8*
 - [6. Mandatory Minimum](#mandatory-minimum)
-- [7. Modules Explanation](#modules-explanation)
+- [7. Module Explanation](#modules-explanation)
 - [8. Risk Map](#risk-map)
   - [🟢 Low Risk (Safe / Predictable)](#-low-risk-safe--predictable)
   - [🟡 Medium Risk (Manageable with Planning)](#-medium-risk-manageable-with-planning)
