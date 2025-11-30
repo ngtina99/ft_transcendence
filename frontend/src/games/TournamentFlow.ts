@@ -1,0 +1,577 @@
+import { Bracket, Player, Match, createTwoPlayerTournament, createFourPlayerTournament, reportMatchResult } from "../pages/tournament/TournamentEngine";
+import { ensureMeFirst } from "../pages/tournament/utils"; // reuse shared helpers
+import { resetTimer } from "../components/Timer";
+import { resetDifficulty, getDisplayName } from "../pages/tournament/InitTournamentLobby";
+import { t } from "../services/lang/LangEngine";
+import DOMPurify from "dompurify";
+
+/**
+ * Tournament Flow Controller
+ *
+ * Manage the tournament flow:
+ * - Tournament bracket creation and management
+ * - Match progression and result handling
+ * - Overlay UI for results and rounds
+ * - Space key handling for game transitions
+ * - Tie-breaker logic for tied matches
+ * - Champion declaration with Back to Arcade button
+ */
+
+// Space-key overlay control (two-space flow: Space #1 hides overlay, Space #2
+let spaceHandler: ((e: KeyboardEvent) => void) | null = null;  // Space key event handler
+let inTieBreaker = false;  // Flag to track if we're in a tie-breaker round
+let overlayModal = false;                     // champion overlay modal flag
+(Object.assign(window as any, { tournamentOverlayModal: false })); // global mirror
+
+/**
+ * Removes the space key event handler to prevent duplicate listeners
+ * Called when transitioning between tournament states
+ */
+function detachSpaceHandler() {
+  if (spaceHandler) {
+    window.removeEventListener("keydown", spaceHandler, true);
+    spaceHandler = null;
+  }
+}
+
+/**
+ * Attaches space key handler to capture space presses while overlay is visible
+ * Implements two-space flow: Space #1 hides overlay, Space #2 starts the game
+ */
+function attachSpaceToStart() {
+   if (overlayModal) return; // if it's champion
+
+  detachSpaceHandler(); // remove old listeners (cleaning)
+  spaceHandler = (e: KeyboardEvent) => {
+    if (e.code === "Space") {
+      e.preventDefault(); // no scrolling
+      e.stopPropagation(); // no for game or other function set up
+      hideOverlay();   // Space #1, closes overlay
+      detachSpaceHandler(); // removed again so could go the game
+    }
+  };
+  // Capture sooner than game would react, close the overlay before the game reacts to Space
+  window.addEventListener("keydown", spaceHandler, { capture: true });
+}
+
+/**
+ * Tournament seed data structure persisted from lobby to tournament
+ * Contains tournament configuration and player information
+ */
+type SeedPayload = {
+  mode: "2" | "4";                    // Tournament mode: 2-player or 4-player
+  difficulty?: "easy" | "medium" | "hard"; // Tournament difficulty level
+  players: Player[];                  // List of participating players (with auth data)
+  pairs: [string, string][] | null;   // Player pairings for 4-player tournaments
+};
+
+/**
+ * Loads tournament seed data from localStorage, from InitTournamentLobby
+ * @returns {SeedPayload | null} Tournament configuration or null if not found/invalid
+ */
+function loadSeed(): SeedPayload | null {
+  try {
+    const raw = localStorage.getItem("tournamentSeed"); // load value and check if it's not empty
+    if (!raw) return null;
+    return JSON.parse(raw); // convert back to data structure
+  } catch {
+    return null;
+  }
+}
+
+// Overlay DOM elements (mounted inside #gameWindow as tournament overlay)
+let overlay: HTMLDivElement | null = null;           // Main overlay container
+let nameLeftEl: HTMLDivElement | null = null;        // Left player name display
+let nameRightEl: HTMLDivElement | null = null;       // Right player name display
+let roundLabelEl: HTMLDivElement | null = null;     // Round label (e.g., "Round 1", "Final")
+let championEl: HTMLDivElement | null = null;       // Champion banner element
+
+// Current match player names and objects for reference
+let currentLeftName = "";
+let currentRightName = "";
+let currentLeftPlayer: Player | undefined;
+let currentRightPlayer: Player | undefined;
+
+/**
+ * Creates and mounts the tournament overlay UI
+ * Handles cleanup of existing overlays and creates new match display interface
+ */
+function mountOverlay() {
+  const gameWin = document.getElementById("gameWindow"); // show in the gamewindow
+  if (!gameWin) return;
+
+  // Clean up any existing overlay from previous sessions
+  if (overlay) {
+    const wrongParent = overlay.parentElement !== gameWin; // if there is any existing overlay
+    const detached = !overlay.isConnected; // it it's detached DOM clean
+    if (wrongParent || detached) {
+      try { overlay.remove(); } catch (err) { } // remove
+      overlay = null;
+      nameLeftEl = nameRightEl = roundLabelEl = championEl = null;
+    }
+  }
+  if (overlay) return;
+
+  // Create new overlay element
+  overlay = document.createElement("div");
+  overlay.id = "tournament-overlay";
+  overlay.className = "absolute inset-0 z-20 hidden";
+  overlay.setAttribute("style", "border-radius: inherit; background: inherit;");
+
+  // Overlay HTML template with match information and controls
+  overlay.innerHTML = DOMPurify.sanitize(`
+    <div class="relative h-full w-full flex flex-col items-center justify-start pt-6 px-4 animate-zoomIn">
+      <h2 id="round-label" class="text-2xl font-bold text-white"></h2>
+      <div class="relative mt-6 w-full h-full flex items-center justify-between px-6">
+        <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-white/20"></div>
+        <div class="w-1/2 pr-8 flex flex-col items-start">
+          <div class="text-xl font-bold text-violet-400 break-words" id="name-left"></div>
+          <div class="mt-2 text-xs text-gray-300">${t("controlsLetter")}</div>
+        </div>
+        <div class="w-1/2 pl-8 flex flex-col items-end">
+          <div class="text-xl font-bold text-violet-400 text-right break-words" id="name-right"></div>
+          <div class="mt-2 text-xs text-gray-300 text-right">${t("controlsArrow")}</div>
+        </div>
+      </div>
+      <div id="champion-banner" class="hidden mt-4 rounded-2xl border border-emerald-300/30 bg-emerald-600/10 text-emerald-200 px-4 py-3 text-center text-lg font-semibold"></div>
+      <div class="mt-4 flex justify-center">
+        <div class="text-gray-400 text-sm">${t("pressSpace")}</div>
+      </div>
+    </div>
+  `);
+  gameWin.appendChild(overlay);
+
+  // Cache DOM element references for efficient updates
+  nameLeftEl  = overlay.querySelector("#name-left") as HTMLDivElement;
+  nameRightEl = overlay.querySelector("#name-right") as HTMLDivElement;
+  roundLabelEl = overlay.querySelector("#round-label") as HTMLDivElement;
+  championEl   = overlay.querySelector("#champion-banner") as HTMLDivElement;
+}
+
+/**
+ * Displays the tournament overlay with match information
+ * @param left - Left player name
+ * @param right - Right player name
+ * @param label - Round label (e.g., "Round 1", "Final")
+ * @param leftPlayer - Full left Player object (optional)
+ * @param rightPlayer - Full right Player object (optional)
+ */
+function showOverlay(left: string, right: string, label: string, leftPlayer?: Player, rightPlayer?: Player) {
+  mountOverlay(); // show player side with controls
+  (window as any).layoutTournamentRound?.();   // Reset game field, prepare new round in InitGameTournament
+
+  if (!overlay || !nameLeftEl || !nameRightEl || !roundLabelEl) return;
+  overlayModal = false;
+  (window as any).tournamentOverlayModal = false;
+
+  championEl?.classList.add("hidden");  // Hide champion banner for regular matches
+
+  // Update overlay content with display names (including "(G)" for guests)
+  nameLeftEl.textContent = leftPlayer ? getDisplayName(leftPlayer) : left;
+  nameRightEl.textContent = rightPlayer ? getDisplayName(rightPlayer) : right;
+  roundLabelEl.textContent = label;
+  overlay.classList.remove("hidden");
+
+  // Store current match information
+  currentLeftName = leftPlayer ? getDisplayName(leftPlayer) : left;
+  currentRightName = rightPlayer ? getDisplayName(rightPlayer) : right;
+  currentLeftPlayer = leftPlayer;
+  currentRightPlayer = rightPlayer;
+  
+  // global for debugging
+  (window as any).tournamentCurrentPlayers = {
+    left,
+    right,
+    label,
+    leftPlayer,   // Full Player object
+    rightPlayer   // Full Player object
+  };
+}
+
+/**
+ * Hides the tournament overlay
+ */
+function hideOverlay() {
+  overlay?.classList.add("hidden");
+  overlayModal = false;
+  (window as any).tournamentOverlayModal = false;
+}
+
+/**
+ * Displays the tournament completion screen with champion announcement
+ * @param name - Champion player name
+ */
+function showChampion(name: string) {
+  mountOverlay();
+  if (!overlay) return;
+
+  overlayModal = true; // final, detach space forever
+  (window as any).tournamentOverlayModal = true;
+  // Rebuild overlay as tournament completion view
+  overlay.innerHTML = DOMPurify.sanitize(`
+    <div class="relative h-full w-full flex flex-col items-center justify-center px-6 animate-zoomIn">
+      <h2 class="text-3xl font-bold text-white mb-2">${t("tournamentComplete")}</h2>
+      <div class="text-xl text-emerald-300 font-semibold mb-6">${t("champion")}: ${name}</div>
+
+        <button id="btn-back-arcade"
+			class="px-6 py-3 rounded-xl font-semibold text-white transition hover:shadow cursor-pointer bg-[var(--color-button)] hover:bg-[var(--color-button-hover)]">
+          ${t("backToArcade")}
+        </button>
+      </div>
+    </div>
+  `);
+
+  overlay.classList.remove("hidden");
+
+  detachSpaceHandler();
+  // Set up completion screen button handlers
+  const btnBack = overlay.querySelector("#btn-back-arcade") as HTMLButtonElement;
+
+  // Back to arcade button, 
+  btnBack?.addEventListener("click", () => {
+    teardownTournamentFlow(); // clean up
+    localStorage.removeItem("tournamentSeed"); // no more for this round
+    resetDifficulty(); // Reset difficulty to medium
+    window.location.hash = "#intro"; // back to intro
+  });
+}
+
+/** Tournament bracket and match state */
+let bracket: Bracket | null = null;        // Current tournament bracket
+let currentMatch: Match | null = null;      // Currently active match
+
+/**
+ * Finds the next unplayed match in the tournament bracket
+ * @param b - Tournament bracket to search
+ * @returns {Match | null} Next match to play or null if tournament complete
+ */
+function nextMatch(b: Bracket): Match | null {
+  const rounds = b.rounds.slice().sort((a, c) => a.round - c.round); // slice for shallow copy not to modify, 
+  for (const r of rounds) {
+    const ms = r.matches.slice().sort((a, c) => a.index - c.index); // check upon indexes the winnerid
+    for (const m of ms) if (!m.winnerId) return m; // check if there' a winner, return first unplayed match within that round (this is the next match to play, since it has no winner yet)
+  }
+  return null;
+}
+
+/**
+ * Generates round labels for 2-player best-of-3 matches
+ * @param gamesPlayed - Number of games completed in the match
+ * @returns {string} Round label
+ */
+function labelFor2pBo3(gamesPlayed: number): string {
+  if (gamesPlayed === 0) return `${t("round")} 1`;
+  if (gamesPlayed === 1) return `${t("round")} 2`;
+  return "Final";
+}
+
+/**
+ * Generates appropriate round label for a match
+ * @param m - Match object
+ * @param mode - Tournament mode ("2" or "4")
+ * @returns {string} Round label
+ */
+function labelFor(m: Match, mode: "2" | "4"): string {
+  if (mode === "2") {
+    const played = m.winsA + m.winsB; // counting from wins the label
+    return labelFor2pBo3(played);
+  }
+  if (m.round === 1) return m.index === 0 ? `${t("round")} 1` : `${t("round")} 2`; // round 1 for each but index moving up
+  if (m.round === 2) return `${t("final")}`;
+  return `${t("round")} ${m.round}`; // Round: number
+}
+
+
+/**
+ * Processes game results and advances tournament state using player ID
+ * This is the preferred method that avoids name matching issues
+ * @param winnerId - ID of the winning player
+ * @param winnerName - Name of the winning player (for 2-player tournaments)
+ */
+function acceptGameResultWithPlayer(winnerId: string) {
+  if (!bracket || !currentMatch) return;
+
+  const seed = loadSeed()!;
+  const m = currentMatch;
+
+  // 2-player tournament: best-of-3 format, play all 3 rounds
+  if (seed.mode === "2" && m.bestOf === 3 && m.round === 1) {
+    if (winnerId === m.playerA.id) m.winsA += 1;
+    else if (winnerId === m.playerB.id) m.winsB += 1;
+
+    const played = m.winsA + m.winsB;
+
+    // Continue to next round if not all 3 games played
+    if (played < 3) {
+      showOverlay(m.playerA.name, m.playerB.name, labelFor2pBo3(played), m.playerA, m.playerB); // Round 2 / Final
+      attachSpaceToStart();
+      return;
+    }
+
+    // After 3rd game, determine champion
+    if (!m.winnerId) m.winnerId = m.winsA > m.winsB ? m.playerA.id : m.playerB.id;
+    bracket.championId = m.winnerId;
+    const champ = bracket.players.find(p => p.id === bracket!.championId)!.name;
+
+    showChampion(champ);
+    return;
+  }
+
+  // 4-player tournament: single elimination matches
+  reportMatchResult(bracket, m.id, winnerId);
+
+  // Check if tournament is complete
+  if (bracket.championId) {
+    const champ = bracket.players.find(p => p.id === bracket!.championId)!.name;
+    showChampion(champ);
+    return;
+  }
+
+  // Advance to next match
+  const nxt = nextMatch(bracket);
+  if (nxt) {
+    currentMatch = nxt;
+    (window as any).tournamentCurrentMatch = currentMatch; // Update global reference
+    console.log("Updated tournamentCurrentMatch:", currentMatch);
+    showOverlay(nxt.playerA.name, nxt.playerB.name, labelFor(nxt, seed.mode), nxt.playerA, nxt.playerB); // Round 2 or Final
+    attachSpaceToStart();
+  }
+}
+
+/**
+ * Processes game results and advances tournament state
+ * Called by window.reportTournamentGameResult or timeup events
+ * @param winnerName - Name of the winning player
+ */
+function acceptGameResult(winnerName: string) {
+  if (!bracket || !currentMatch) return; // no place to pop up
+
+  const seed = loadSeed()!; // get players
+  const m = currentMatch; // get match played
+
+  // 2-player tournament: best-of-3 format
+  if (seed.mode === "2" && m.bestOf === 3 && m.round === 1) {
+    if (winnerName.toLowerCase() === m.playerA.name.toLowerCase()) m.winsA += 1;
+    else m.winsB += 1;
+
+    const played = m.winsA + m.winsB;
+
+    // Continue to next round if not all 3 games played
+    if (played < 3) {
+      showOverlay(m.playerA.name, m.playerB.name, labelFor2pBo3(played), m.playerA, m.playerB); // Round 2 or Final
+      attachSpaceToStart();
+      return;
+    }
+
+    // After 3rd game, determine champion
+    if (!m.winnerId) m.winnerId = m.winsA > m.winsB ? m.playerA.id : m.playerB.id;
+    bracket.championId = m.winnerId;
+    const champ = bracket.players.find(p => p.id === bracket!.championId)!.name; // put champion name
+
+    showChampion(champ); // show final overlay
+    return;
+  }
+
+  // 4-player tournament: single elimination matches
+  // Strip "(G)" suffix from winnerName for comparison if present
+  const normalizedWinnerName = winnerName.replace(/\s*\(G\)\s*$/, "");
+  const winnerId =
+    normalizedWinnerName.toLowerCase() === m.playerA.name.toLowerCase()
+      ? m.playerA.id
+      : m.playerB.id;
+
+  reportMatchResult(bracket, m.id, winnerId);
+
+  // Check if tournament is complete
+  if (bracket.championId) {
+    const champ = bracket.players.find(p => p.id === bracket!.championId)!.name;
+    showChampion(champ);
+    return;
+  }
+
+  // Advance to next match
+  const nxt = nextMatch(bracket);
+  if (nxt) {
+    currentMatch = nxt;
+    (window as any).tournamentCurrentMatch = currentMatch; // Update global reference
+    console.log("Updated tournamentCurrentMatch:", currentMatch);
+    showOverlay(nxt.playerA.name, nxt.playerB.name, labelFor(nxt, seed.mode), nxt.playerA, nxt.playerB); // Round 2 or Final
+    attachSpaceToStart();
+  }
+}
+
+/**
+ * Initializes the tournament flow system
+ * - Tournament bracket, event handlers, and displays first match
+ */
+export function bootTournamentFlow() {
+  teardownTournamentFlow();   // Start fresh every time
+  inTieBreaker = false;   // sign later if there's going to be a tie
+
+  /// from InitGame: difficulty, mode, players
+  const seed = loadSeed();
+  if (!seed) return;
+
+  const players = ensureMeFirst(seed.players);
+
+  // Use difficulty from saved seed (set when tournament was created)
+  const currentDifficulty: "easy" | "medium" | "hard" = seed.difficulty || "medium";
+
+  // for debugging
+  console.log("🔍 DIFFICULTY DEBUG - Seed data:");
+  console.log("  Saved difficulty:", seed.difficulty);
+  console.log("🎯 SELECTED DIFFICULTY:", currentDifficulty);
+
+  // Create tournament bracket based on mode they assigned
+  if (seed.mode === "2") {
+    bracket = createTwoPlayerTournament(players.slice(0, 2) as [Player, Player]); // first two player
+    bracket.difficulty = currentDifficulty;
+
+    // Make sure reset of BO3 state, starts from zero
+    const r1 = bracket.rounds.find(r => r.round === 1);
+    if (r1?.matches[0]) {
+      const m = r1.matches[0];
+      m.winsA = 0;
+      m.winsB = 0;
+      delete m.winnerId;
+    } // 4 player
+  } else {
+      // build from pairs if valid and filled up (or fallback to first 4 players)
+      const idsOk = (pairs: [string, string][]) => {
+      const map = new Map(players.map(p => [p.id, p]));
+      return pairs.every(([a, b]) => map.has(a) && map.has(b));
+    };
+
+	// 4 player: if we have two valid paris
+    if (seed.pairs && seed.pairs.length === 2 && idsOk(seed.pairs)) {
+      const map = new Map(players.map(p => [p.id, p]));
+      const pair1 = seed.pairs[0];
+      const pair2 = seed.pairs[1];
+      if (pair1 && pair2) {
+		// store pairs in semifinals
+        const [pA1, pA2] = pair1; // id to be ordered for player objects
+        const [pB1, pB2] = pair2;
+        const s1: [Player, Player] = [map.get(pA1)!, map.get(pA2)!];
+        const s2: [Player, Player] = [map.get(pB1)!, map.get(pB2)!];
+        const ordered: [Player, Player, Player, Player] = [s1[0], s1[1], s2[0], s2[1]]; // ordered pair into finals
+        bracket = createFourPlayerTournament(ordered);
+        bracket.difficulty = currentDifficulty;
+      }
+    } else {
+      // Fallback: semis from first 4 (you're first due to ensureMeFirst)
+      const p = players.slice(0, 4) as [Player, Player, Player, Player];
+      bracket = createFourPlayerTournament(p);
+      bracket.difficulty = currentDifficulty;
+    }
+  }
+
+  // Find and set up first match not been played yet
+  currentMatch = nextMatch(bracket!);
+  if (!currentMatch) {
+    const r1 = bracket!.rounds.find(r => r.round === 1);
+    currentMatch = r1?.matches?.[0] ?? null; // fallback to first match if found, if the left side is undefined then null
+  }
+
+  // Show first match overlay
+  if (currentMatch) {
+    const startLabel = seed.mode === "2" ? labelFor2pBo3(0) : labelFor(currentMatch, seed.mode);
+    showOverlay(currentMatch.playerA.name, currentMatch.playerB.name, startLabel, currentMatch.playerA, currentMatch.playerB);
+    attachSpaceToStart();
+  }
+
+  // game result reporting to global scope
+  (window as any).reportTournamentGameResult = (winnerName: string) => {
+    acceptGameResult(winnerName);
+  };
+
+  // Expose current match for match saving logic
+  (window as any).tournamentCurrentMatch = currentMatch;
+  console.log("Set tournamentCurrentMatch:", currentMatch);
+
+  // Expose tournament difficulty for game to access
+  const tournamentDifficulty = bracket?.difficulty || "medium";
+  (window as any).tournamentDifficulty = tournamentDifficulty;
+
+  // Initialize timer display with correct difficulty time
+  const difficultyTimes = { easy: 40, medium: 30, hard: 20 };
+  const gameTime = difficultyTimes[tournamentDifficulty];
+  resetTimer(gameTime);
+
+  // Timer timeout handler: decides winner or triggers tie-breakers
+  (window as any).tournamentTimeUp = (leftScore: number, rightScore: number) => {
+    const L = Number(leftScore ?? 0);
+    const R = Number(rightScore ?? 0);
+
+    if (L === R) {
+      if (!inTieBreaker) {
+        inTieBreaker = true; // already has one
+        showOverlay(currentLeftName, currentRightName, `${t("tieBreaker")}`, currentLeftPlayer, currentRightPlayer);
+        attachSpaceToStart();   // Space #1 hides overlay; Space #2 starts round (handled by game)
+      } else {
+        // Still tied in tie-breaker -> sudden-death restart (no overlay) to play until somebody won
+        (window as any).beginTournamentRound?.();
+      }
+      return; // until it's not anymore
+    }
+
+    // We have a winner -> clear tie-breaker and advance the match
+    inTieBreaker = false;
+
+    // error log
+    if (!currentMatch) {
+      console.error("tournamentTimeUp: No currentMatch available");
+      return;
+    }
+
+    // Determine winner based on scores: L > R means left player (playerA) wins, else right player (playerB) wins
+    // Since showOverlay maps playerA to left and playerB to right, we can use currentMatch directly
+    const winnerId = L > R ? currentMatch.playerA.id : currentMatch.playerB.id;
+
+    acceptGameResultWithPlayer(winnerId);
+  };
+}
+
+/**
+ * - Cleans up tournament flow system and resets all state
+ * - Removes event handlers, elements, and global references
+ */
+export function teardownTournamentFlow() {
+  // Reset difficulty to medium
+  resetDifficulty();
+
+  // Stop the game loop, check if there is a function saved on window called stopTournamentGame (InitGameTournament)
+  if (typeof (window as any).stopTournamentGame === 'function') {
+    (window as any).stopTournamentGame();
+  }
+
+  // Stop listening space
+  detachSpaceHandler();
+
+  // Remove overlay from previous session
+  if (overlay && overlay.isConnected) {
+    try { overlay.remove(); } catch {}
+  }
+  overlay = null;
+
+  // elements to default
+  nameLeftEl = nameRightEl = roundLabelEl = championEl = null;
+
+  // no modal (overlays) 
+  overlayModal = false; // private inside the file
+  (window as any).tournamentOverlayModal = false; // global (InitGameTournament)
+
+  // Clear global hooks so a new session starts clean
+  (window as any).tournamentCurrentPlayers = undefined;
+  (window as any).reportTournamentGameResult = undefined;
+  (window as any).tournamentTimeUp = undefined;
+  (window as any).stopTournamentGame = undefined;
+  (window as any).tournamentDifficulty = undefined;
+
+  // Reset tournament flow state
+  bracket = null;
+  currentMatch = null;
+  currentLeftName = currentRightName = "";
+  currentLeftPlayer = currentRightPlayer = undefined;
+
+  inTieBreaker = false;
+}

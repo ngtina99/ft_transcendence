@@ -1,0 +1,516 @@
+// Authentication routes for user login and registration
+import { createLogger, ErrorType } from '../utils/logger.js';
+import bcrypt from 'bcrypt';
+
+export default async function authRoutes(fastify) {
+  // Create structured logger instance
+  const logger = createLogger(fastify.log);
+  const SALT_ROUNDS = 10;
+  // POST /auth/login - Authenticate user and return JWT token
+  fastify.post('/login', {
+    // Everything in schema is public information only, for documentation purposes (Swagger).
+    // We have to add it for each endpoint we create.
+    schema: {
+      tags: ['Authentication'],
+      summary: 'User Login',
+      description: 'Authenticate user with email and password, returns JWT token',
+      body: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            description: 'User email address'
+          },
+          password: {
+            type: 'string',
+            minLength: 1,
+            description: 'User password'
+          }
+        }
+      },
+      response: {
+        200: {
+          description: 'Successful login',
+          type: 'object',
+          properties: {
+            token: {
+              type: 'string',
+              description: 'JWT authentication token',
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            },
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'integer', example: 1 },
+                name: { type: 'string', example: 'John Doe' },
+                email: { type: 'string', example: 'user@example.com' }
+              }
+            }
+          }
+        },
+        400: {
+          description: 'Bad request - missing or invalid input',
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Bad Request' }
+          }
+        },
+        401: {
+          description: 'Unauthorized - invalid credentials',
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Invalid credentials' }
+          }
+        },
+        500: {
+          description: 'Internal server error',
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Internal server error' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const correlationId = request.headers['x-correlation-id'] || `login-${Date.now()}`;
+      const { email, password } = request.body;
+
+      // Input validation - ensure required fields are present
+      if (!email || !password) {
+        logger.error(correlationId, 'Login validation failed - missing required fields', {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'MISSING_REQUIRED_FIELDS',
+          httpStatus: 400,
+          metadata: { email: !!email, password: !!password }
+        });
+        return reply.status(400).send({ error: 'Email and password are required' });
+      }
+
+      // Email format validation (basic)
+      if (!email.includes('@') || !email.includes('.')) {
+        logger.error(correlationId, `Login validation failed - invalid email format: ${email}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_EMAIL_FORMAT',
+          httpStatus: 400,
+          metadata: { email }
+        });
+        return reply.status(400).send({ error: 'Please enter a valid email address' });
+      }
+
+      // Password length validation
+      if (password.length < 1) {
+        logger.error(correlationId, 'Login validation failed - password cannot be empty', {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'PASSWORD_EMPTY',
+          httpStatus: 400
+        });
+        return reply.status(400).send({ error: 'Password cannot be empty' });
+      }
+
+      // ========================================================================
+      // DATABASE QUERY: Look up user in database by email
+      // ========================================================================
+      // This query searches the User table for a user with the given email address.
+      // We use a prepared statement (db.prepare) for security - it prevents SQL injection attacks.
+      // The ? is a placeholder that gets replaced with the actual email value.
+      // .get() executes the query and returns the first matching row (or undefined if not found).
+      const getUserStmt = fastify.db.prepare('SELECT * FROM User WHERE email = ?');
+      const user = getUserStmt.get(email);
+
+      if (!user) {
+        // Don't reveal if email exists - use generic error for security
+        logger.error(correlationId, 'Login failed - invalid credentials (user not found)', {
+          errorType: ErrorType.AUTHENTICATION_ERROR,
+          errorCode: 'INVALID_CREDENTIALS',
+          httpStatus: 401,
+          metadata: { email }
+        });
+        return reply.status(401).send({ error: 'Invalid credentials' });
+      }
+
+      // Password validation using bcrypt hash comparison
+      const passMatch = await bcrypt.compare(password, user.password);
+      if (!passMatch) {
+        logger.error(correlationId, 'Login failed - invalid credentials (wrong password)', {
+          errorType: ErrorType.AUTHENTICATION_ERROR,
+          errorCode: 'INVALID_CREDENTIALS',
+          httpStatus: 401,
+          metadata: { userId: user.id, email }
+        });
+        return reply.status(401).send({ error: 'Invalid credentials' });
+      }
+
+      // Generate JWT token with user ID payload
+      const token = fastify.jwt.sign({ id: user.id });
+
+      // === Bootstrap/verify profile in user-service (ensure profile exists) ===
+      const axios = (await import('axios')).default;
+      const userServiceUrl = process.env.USER_SERVICE_URL || `http://user_service:${process.env.USER_SERVICE_PORT || 3002}`;
+
+      try {
+        console.log(`[${correlationId}] Bootstrapping/verifying user profile for authUserId ${user.id}`);
+
+        // Try to get the user profile first
+        const profileCheckResponse = await axios.get(
+          `${userServiceUrl}/users/public/${user.id}`,
+          {
+            timeout: 3000,
+            validateStatus: (status) => status < 500 // Accept 404 as valid response
+          }
+        );
+
+        // If profile doesn't exist (404), create it
+        if (profileCheckResponse.status === 404) {
+          console.log(`[${correlationId}] Profile not found, creating new profile`);
+
+          // Extract username from email as fallback (will be user-editable)
+          const defaultName = user.email.split('@')[0];
+
+          await axios.post(
+            `${userServiceUrl}/users/bootstrap`,
+            {
+              authUserId: user.id,
+              name: defaultName,
+              email: user.email
+            },
+            {
+              timeout: 5000,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Correlation-ID': correlationId
+              }
+            }
+          );
+          console.log(`[${correlationId}] Successfully created user profile on login`);
+        } else {
+          console.log(`[${correlationId}] Profile already exists, continuing with login`);
+        }
+      } catch (profileError) {
+        // Log error but don't fail login - user can still access the app
+        // Frontend will handle missing profile gracefully with our fix
+        logger.error(correlationId, `Failed to bootstrap profile (non-fatal): ${profileError.message}`, {
+          errorType: ErrorType.EXTERNAL_SERVICE_ERROR,
+          errorCode: 'PROFILE_BOOTSTRAP_FAILED',
+          httpStatus: 500,
+          metadata: { userId: user.id, error: profileError.message }
+        });
+      }
+
+      // Return token and safe user data (no password)
+      return {
+        token, // JWT token for frontend authentication
+        user: { id: user.id, email: user.email }
+      };
+
+    } catch (error) {
+      const correlationId = request.headers['x-correlation-id'] || `login-${Date.now()}`;
+      logger.error(correlationId, `Login error: ${error.message}`, {
+        errorType: ErrorType.INTERNAL_ERROR,
+        errorCode: 'LOGIN_ERROR',
+        httpStatus: 500,
+        metadata: { error: error.message }
+      });
+
+      // Return generic error to client (don't expose internal details)
+      return reply.status(500).send({ error: 'Internal server error' });
+    }
+  });
+  // NOTE: /me endpoint moved to user-service as it handles user profile data
+
+  // POST /auth/signup - Register new user account
+  // Everything in schema is public information only, for documentation purposes (Swagger).
+  // We have to add it for each endpoint we create.
+  // POST /auth/signup - Register new user account
+  fastify.post('/signup', {
+    schema: {
+      tags: ['Authentication'],
+      summary: 'User Registration',
+      description: 'Register a new user account with email, username, and password',
+      body: {
+        type: 'object',
+        required: ['name', 'email', 'password', 'confirmPassword'],
+        properties: {
+          name: { type: 'string', minLength: 1 },
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string', minLength: 1 },
+          confirmPassword: { type: 'string', minLength: 1 }
+        }
+      },
+      response: {
+        200: {
+          description: 'Successful registration',
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            email: { type: 'string', example: 'john@example.com' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const correlationId = request.headers['x-correlation-id'] || `signup-${Date.now()}`;
+      const { name, email, password, confirmPassword } = request.body;
+
+      // === Input validation ===
+      if (!name || !email || !password || !confirmPassword) {
+        logger.error(correlationId, 'Signup validation failed - missing required fields', {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'MISSING_REQUIRED_FIELDS',
+          httpStatus: 400,
+          metadata: { name: !!name, email: !!email, password: !!password, confirmPassword: !!confirmPassword }
+        });
+        return reply.status(400).send({ error: 'All fields are required' });
+      }
+
+      // Normalize and validate lowercase only
+      const normalizedEmail = email.toLowerCase();
+
+      // Normalize to avoid e.g.: É Á...
+      const nName  = name.normalize('NFC');
+      const nEmail = email.normalize('NFC');
+
+      if (nName !== nName.toLowerCase()) {
+        logger.error(correlationId, `Signup validation failed - username contains capital letters: ${name}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_USERNAME_FORMAT',
+          httpStatus: 400,
+          metadata: { username: name }
+        });
+        return reply.status(400).send({ error: 'Username cannot contain capital letters' });
+      }
+
+      if (nEmail !== nEmail.toLowerCase()) {
+        logger.error(correlationId, `Signup validation failed - email contains capital letters: ${email}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_EMAIL_FORMAT',
+          httpStatus: 400,
+          metadata: { email }
+        });
+        return reply.status(400).send({ error: 'Email cannot contain capital letters' });
+      }
+
+      // Space checks
+      if (/\s/.test(name)) {
+        logger.error(correlationId, `Signup validation failed - username contains spaces: ${name}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_USERNAME_FORMAT',
+          httpStatus: 400,
+          metadata: { username: name }
+        });
+        return reply.status(400).send({ error: 'Username cannot contain spaces' });
+      }
+
+      if (/\s/.test(email)) {
+        logger.error(correlationId, `Signup validation failed - email contains spaces: ${email}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_EMAIL_FORMAT',
+          httpStatus: 400,
+          metadata: { email }
+        });
+        return reply.status(400).send({ error: 'Email cannot contain spaces' });
+      }
+
+      // validation for email and username characters
+	  const allowedChars = /^[a-z0-9_.-]+$/;
+	  const allowedEmailChars = /^[a-z0-9_.@-]+$/;
+
+      if (!email.includes('@') || !email.includes('.')) {
+        logger.error(correlationId, `Signup validation failed - invalid email format: ${email}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_EMAIL_FORMAT',
+          httpStatus: 400,
+          metadata: { email }
+        });
+        return reply.status(400).send({ error: 'Please enter a valid email address' });
+      }
+
+      if (!allowedChars.test(name)) {
+        logger.error(correlationId, `Signup validation failed - username contains invalid characters: ${name}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_USERNAME_FORMAT',
+          httpStatus: 400,
+          metadata: { username: name }
+        });
+        return reply.status(400).send({
+          error: 'Username cannot contain special characters - only letters, numbers, _, - and .'
+        });
+      }
+
+	  if (!allowedEmailChars.test(email)) {
+        logger.error(correlationId, `Signup validation failed - email contains invalid characters: ${email}`, {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'INVALID_EMAIL_FORMAT',
+          httpStatus: 400,
+          metadata: { email }
+        });
+        return reply.status(400).send({
+          error: 'Email cannot contain special characters - only letters, numbers, _, -, @ and .'
+        });
+      }
+
+      if (normalizedEmail.length < 3 || password.length < 1) {
+        logger.error(correlationId, 'Signup validation failed - password cannot be empty', {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'PASSWORD_EMPTY',
+          httpStatus: 400
+        });
+        return reply.status(400).send({ error: 'Password cannot be empty' });
+      }
+
+      if (password !== confirmPassword) {
+        logger.error(correlationId, 'Signup validation failed - passwords do not match', {
+          errorType: ErrorType.VALIDATION_ERROR,
+          errorCode: 'PASSWORDS_DO_NOT_MATCH',
+          httpStatus: 400
+        });
+        return reply.status(400).send({ error: 'Passwords do not match' });
+      }
+
+      // ========================================================================
+      // DATABASE QUERY: Check if email already exists
+      // ========================================================================
+      // Before creating a new user, we need to check if someone already has this email.
+      // This prevents duplicate accounts with the same email address.
+      // We use a prepared statement for security and performance.
+      const checkEmailStmt = fastify.db.prepare('SELECT * FROM User WHERE email = ?');
+      const existingEmail = checkEmailStmt.get(normalizedEmail);
+      if (existingEmail) {
+        logger.error(correlationId, `User with email '${normalizedEmail}' already exists`, {
+          errorType: ErrorType.DUPLICATE_EMAIL,
+          errorCode: 'EMAIL_ALREADY_EXISTS',
+          httpStatus: 400,
+          metadata: { email: normalizedEmail }
+        });
+        return reply.status(400).send({ error: 'User with this email already exists' });
+      }
+
+      // ========================================================================
+      // DATABASE QUERY: Create new user in database
+      // ========================================================================
+      // This inserts a new user record into the User table.
+      // We hash the password first using bcrypt for security (never store plaintext passwords).
+      // The INSERT statement uses ? placeholders for the email and password values.
+      // .run() executes the INSERT and returns information about the operation (like the new user's ID).
+      const hashedPass = await bcrypt.hash(password, SALT_ROUNDS);
+      const insertUserStmt = fastify.db.prepare('INSERT INTO User (email, password) VALUES (?, ?)');
+      const result = insertUserStmt.run(normalizedEmail, hashedPass);
+      const newUser = {
+        id: Number(result.lastInsertRowid),
+        email: normalizedEmail,
+        password: hashedPass,
+      };
+
+      // === Bootstrap profile in user-service with retry ===
+      const axios = (await import('axios')).default;
+      const userServiceUrl = process.env.USER_SERVICE_URL || `http://user_service:${process.env.USER_SERVICE_PORT || 3002}`;
+
+      const maxRetries = 3;
+      let attempt = 0;
+      let success = false;
+
+      while (attempt < maxRetries && !success) {
+        try {
+          attempt++;
+          console.log(
+            `[${correlationId}] Attempt ${attempt}/${maxRetries}: bootstrapping user profile for authUserId ${newUser.id}`
+          );
+
+          await axios.post(
+            `${userServiceUrl}/users/bootstrap`,
+            {
+              authUserId: newUser.id,
+              name,
+              email: newUser.email
+            },
+            {
+              timeout: 5000,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Correlation-ID': correlationId
+              }
+            }
+          );
+
+          console.log(`[${correlationId}] Successfully created user profile`);
+          success = true;
+        } catch (profileError) {
+          const status = profileError.response?.status;
+          const msg = profileError.response?.data?.error || profileError.message;
+
+          logger.error(correlationId, `Attempt ${attempt} failed to bootstrap profile: ${msg}`, {
+            errorType: ErrorType.EXTERNAL_SERVICE_ERROR,
+            errorCode: 'PROFILE_BOOTSTRAP_FAILED',
+            httpStatus: status || 500,
+            metadata: { attempt, userId: newUser.id, error: msg }
+          });
+
+          // ====================================================================
+          // DATABASE QUERY: Rollback - Delete user if profile creation failed
+          // ====================================================================
+          // If creating the user profile in user-service fails (e.g., username conflict),
+          // we need to delete the user we just created in auth-service.
+          // This keeps the databases in sync and prevents orphaned auth records.
+          // unrecoverable client-side error (e.g., username conflict)
+          if (status === 400) {
+            const deleteUserStmt = fastify.db.prepare('DELETE FROM User WHERE id = ?');
+            deleteUserStmt.run(newUser.id);
+            logger.error(correlationId, `Signup failed - username conflict, rolled back user ${newUser.id}`, {
+              errorType: ErrorType.DUPLICATE_USERNAME,
+              errorCode: 'USERNAME_ALREADY_EXISTS',
+              httpStatus: 400,
+              metadata: { userId: newUser.id, error: msg }
+            });
+            return reply
+              .status(400)
+              .send({ error: msg || 'Username already taken in user-service' });
+          }
+
+          // ====================================================================
+          // DATABASE QUERY: Rollback - Delete user if all retries failed
+          // ====================================================================
+          // If all retry attempts to create the user profile failed,
+          // we delete the user from auth-service to keep databases in sync.
+          // last retry failed → rollback and report error
+          if (attempt >= maxRetries) {
+            const deleteUserStmt = fastify.db.prepare('DELETE FROM User WHERE id = ?');
+            deleteUserStmt.run(newUser.id);
+            logger.error(correlationId, `All ${maxRetries} attempts failed, rolled back user ${newUser.id}`, {
+              errorType: ErrorType.EXTERNAL_SERVICE_ERROR,
+              errorCode: 'PROFILE_BOOTSTRAP_FAILED',
+              httpStatus: 500,
+              metadata: { userId: newUser.id, attempts: maxRetries }
+            });
+            return reply.status(500).send({
+              error:
+                'Failed to create user profile after multiple attempts. Please try again later.'
+            });
+          }
+
+          // brief delay before next retry
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
+
+      // === Return success ===
+      if (success) {
+        return { id: newUser.id, email: newUser.email };
+      }
+
+    } catch (error) {
+      const correlationId = request.headers['x-correlation-id'] || `signup-${Date.now()}`;
+      logger.error(correlationId, `Signup error: ${error.message}`, {
+        errorType: ErrorType.INTERNAL_ERROR,
+        errorCode: 'SIGNUP_ERROR',
+        httpStatus: 500,
+        metadata: { error: error.message }
+      });
+      return reply.status(500).send({ error: 'Internal server error' });
+    }
+  });
+
+}
+
