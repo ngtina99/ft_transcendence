@@ -123,11 +123,6 @@ help:
 	@echo
 	@echo "ELK:"
 	@echo "  make up-elk            - Start ELK stack (ES + Logstash + Kibana + Filebeat)"
-	@echo "Dev / Vault:"
-	@echo "  make dev              - Clean + build + auto-unseal + start"
-	@echo "  make start            - Build + auto-unseal + start (no clean)"
-	@echo "  make save-vault-keys  - Store Vault unseal keys for automation"
-	@echo "  make auto-unseal      - Unseal Vault using stored keys (.vault-keys)"
 
 # -----------------------------------------------------------------------------
 # Basic lifecycle
@@ -148,10 +143,6 @@ logs:
 
 restart: down
 	@echo "🚀 Starting all services..."
-	@echo "🔐 Starting Vault first..."
-	@docker compose up -d vault-service 2>/dev/null || true
-	@sleep 5
-	@echo "🚀 Starting other services..."
 	docker compose up -d
 	@echo "✅ All services restarted!"
 	@echo "📋 Frontend: https://$(LAN_IP)"
@@ -204,159 +195,6 @@ status:
 	@docker compose ps
 
 # -----------------------------------------------------------------------------
-# Vault basics
-# -----------------------------------------------------------------------------
-
-docker-no-logs: update-env-ip
-	@echo "🐳 Building and starting services (no logs)..."
-	docker compose down 2>/dev/null || true
-	@$(MAKE) waf-certs
-	docker compose build
-	docker compose up -d
-
-# Save Vault keys for automated workflow (one-time setup)
-save-vault-keys:
-	@echo "🔐 Saving Vault keys for automated workflow..."
-	@echo ""
-	@echo "⚠️  This file will store your VAULT_TOKEN and unseal keys"
-	@echo "⚠️  It's added to .gitignore for security"
-	@echo ""
-	@read -p "Enter your VAULT_TOKEN: " token; \
-	echo "VAULT_TOKEN=$$token" > .vault-keys
-	@echo ""
-	@echo "📝 Now enter 3 unseal keys (you only need 3 of the 5):"
-	@read -p "Enter Unseal Key 1: " key1; \
-	echo "UNSEAL_KEY_1=$$key1" >> .vault-keys
-	@read -p "Enter Unseal Key 2: " key2; \
-	echo "UNSEAL_KEY_2=$$key2" >> .vault-keys
-	@read -p "Enter Unseal Key 3: " key3; \
-	echo "UNSEAL_KEY_3=$$key3" >> .vault-keys
-	@chmod 600 .vault-keys
-	@echo ""
-	@echo "✅ Vault keys saved to .vault-keys (secure permissions set)"
-	@echo "🎯 You can now use 'make dev' or 'make start' for automated workflow!"
-
-# Automatically unseal Vault using saved keys
-auto-unseal:
-	@if [ ! -f .vault-keys ]; then \
-		echo "❌ .vault-keys file not found!"; \
-		echo "📝 Run 'make save-vault-keys' first to save your keys"; \
-		exit 1; \
-	fi
-	@echo "🔐 Auto-unsealing Vault..."
-	@if ! docker ps | grep -q vault_service; then \
-		echo "❌ Vault container is not running. Starting it now..."; \
-		docker compose up -d vault-service; \
-		sleep 5; \
-	fi
-	@. ./.vault-keys; \
-	echo "🔓 Unsealing with key 1..."; \
-	docker exec vault_service vault operator unseal $$UNSEAL_KEY_1 > /dev/null; \
-	echo "🔓 Unsealing with key 2..."; \
-	docker exec vault_service vault operator unseal $$UNSEAL_KEY_2 > /dev/null; \
-	echo "🔓 Unsealing with key 3..."; \
-	docker exec vault_service vault operator unseal $$UNSEAL_KEY_3 > /dev/null
-	@echo "✅ Vault unsealed successfully!"
-
-# Complete automated development workflow (clean → docker → auto-unseal)
-dev: clean
-	@echo ""
-	@echo "🎯 Starting automated development workflow..."
-	@echo ""
-	@$(MAKE) waf-certs
-	@$(MAKE) docker-no-logs
-	@echo ""
-	@if [ -f .vault-keys ]; then \
-		echo "🔐 Auto-unsealing Vault..."; \
-		$(MAKE) auto-unseal; \
-	else \
-		echo "❌ .vault-keys not found."; \
-		echo "📝 Run 'make save-vault-keys' once to store your Vault keys, then re-run 'make dev'."; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "🚀 Starting all services now that Vault is unsealed..."
-	@if [ -f .vault-keys ]; then \
-		. ./.vault-keys; \
-		export VAULT_TOKEN; \
-		docker compose up -d; \
-	else \
-		docker compose up -d; \
-	fi
-	@sleep 3
-	@echo ""
-	@echo "✅ Development environment ready!"
-	@echo ""
-	@echo "📋 Services available at:"
-	@echo "  Frontend:     https://$(LAN_IP)"
-	@echo "  Gateway:      https://$(LAN_IP)/api/"
-	@echo "  WebSocket:    wss://$(LAN_IP)/ws/"
-	@echo "  Kibana:       https://$(LAN_IP)/kibana/"
-	@echo ""
-	@echo "📚 API Documentation (Swagger):"
-	@echo "  Gateway:      https://$(LAN_IP)/api/docs"
-	@echo "  Auth Service: https://$(LAN_IP)/auth-docs/"
-	@echo "  User Service: https://$(LAN_IP)/user-docs/"
-	@echo "  WS Service:   https://$(LAN_IP)/ws-docs/"
-	@echo ""
-	@echo "🔍 Logging & Monitoring:"
-	@echo "  Elasticsearch: https://$(LAN_IP)/elasticsearch/"
-	@echo "  Kibana:        https://$(LAN_IP)/kibana/"
-	@echo ""
-	@echo "🔧 Internal Services:"
-	@echo "  Vault:        http://vault-service:8200"
-	@echo ""
-	@echo "💡 Tip: Run 'make logs' to follow logs"
-
-# Quick start without cleaning (docker → auto-unseal)
-start:
-	@echo ""
-	@echo "🎯 Quick starting all services..."
-	@echo ""
-	@$(MAKE) docker-no-logs
-	@echo ""
-	@if [ -f .vault-keys ]; then \
-		echo "🔐 Auto-unsealing Vault..."; \
-		$(MAKE) auto-unseal; \
-	else \
-		echo "❌ .vault-keys not found."; \
-		echo "📝 Run 'make save-vault-keys' once to store your Vault keys, then re-run 'make start'."; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "🚀 Starting all services now that Vault is unsealed..."
-	@if [ -f .vault-keys ]; then \
-		. ./.vault-keys; \
-		export VAULT_TOKEN; \
-		docker compose up -d; \
-	else \
-		docker compose up -d; \
-	fi
-	@sleep 3
-	@echo ""
-	@echo "✅ All services ready!"
-	@echo ""
-	@echo "📋 Services available at:"
-	@echo "  Frontend:     https://$(LAN_IP)"
-	@echo "  Gateway:      https://$(LAN_IP)/api/"
-	@echo "  WebSocket:    wss://$(LAN_IP)/ws/"
-	@echo "  Kibana:       https://$(LAN_IP)/kibana/"
-	@echo ""
-	@echo "📚 API Documentation (Swagger):"
-	@echo "  Gateway:      https://$(LAN_IP)/api/docs"
-	@echo "  Auth Service: https://$(LAN_IP)/auth-docs/"
-	@echo "  User Service: https://$(LAN_IP)/user-docs/"
-	@echo "  WS Service:   https://$(LAN_IP)/ws-docs/"
-	@echo ""
-	@echo "🔍 Logging & Monitoring:"
-	@echo "  Elasticsearch: https://$(LAN_IP)/elasticsearch/"
-	@echo "  Kibana:        https://$(LAN_IP)/kibana/"
-	@echo ""
-	@echo "🔧 Internal Services:"
-	@echo "  Vault:        http://vault-service:8200"
-	@echo ""
-	@echo "💡 Tip: Run 'make logs' to follow logs"
-# -----------------------------------------------------------------------------
 # ELK & rebuild helpers
 # -----------------------------------------------------------------------------
 
@@ -392,6 +230,4 @@ rebuild-all: update-env-ip clear-cache
 	@echo "✅ All services rebuilt!"
 	@echo "📋 Hard refresh browser (Cmd/Ctrl+Shift+R)"
 
-.PHONY: help docker docker-with-vault build up down logs restart restart-services clean \
-        status up-elk clear-cache rebuild-frontend rebuild-all update-env-ip \
-        docker-no-logs save-vault-keys auto-unseal dev start
+.PHONY: help docker build up down logs restart restart-services clean status up-elk clear-cache rebuild-frontend rebuild-all update-env-ip docker-no-logs
