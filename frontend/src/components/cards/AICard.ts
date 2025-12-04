@@ -1,9 +1,0 @@
-import { createCard } from './CardCreator'
-import { t } from "../../services/lang/LangEngine";
-
-export const AICard = createCard({
-  title: t("aiCardTitle"),
-  icon: "🤖",
-  description: t("aiCardDescription"),
-  hash: "AIopponent"
-});
