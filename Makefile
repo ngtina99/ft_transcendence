@@ -69,7 +69,8 @@ up: update-env-ip
 	@$(MAKE) waf-certs
 	docker compose up -d
 	@echo "✅ All services started!"
-	@echo "📋 Frontend: https://$(LAN_IP)"
+	@echo "🌐 Open our website in your browser:"
+	@echo "   👉 https://$(LAN_IP)"
 
 clean:
 	@echo "🧹 Cleaning up ALL Docker resources and local data..."
@@ -230,4 +231,5 @@ rebuild-all: update-env-ip clear-cache
 	@echo "✅ All services rebuilt!"
 	@echo "📋 Hard refresh browser (Cmd/Ctrl+Shift+R)"
 
-.PHONY: help docker build up down logs restart restart-services clean status up-elk clear-cache rebuild-frontend rebuild-all update-env-ip docker-no-logs
+.PHONY: help build up down logs restart restart-services clean status \
+        up-elk clear-cache rebuild-frontend rebuild-all update-env-ip restart-logs
