@@ -27,13 +27,9 @@
 - [10. Logging & Monitoring (ELK)](#10-logging--monitoring-elk-major-elk)
 - [11. Internationalization (i18n)](#11-internationalization-i18n-minor-language)
 - [12. Browser Support](#12-browser-support-minor-browser)
-- [13. Running the Project](#13-running-the-project)
-  - [13.1 First-Time Setup on a Machine (Vault not configured)](#131-first-time-setup-on-a-machine-vault-not-configured)
-  - [13.2 Regular Usage (Vault already configured)](#132-regular-usage-vault-already-configured)
-  - [13.3 Useful Make Targets](#133-useful-make-targets)
-- [14. Service URLs](#14-service-urls)
-- [15. What We Did *Not* Implement](#15-what-we-did-not-implement)
-- [16. Repository Structure](#16-repository-structure)
+- [13. Service URLs](#13-service-urls)
+- [14. What We Did *Not* Implement](#14-what-we-did-not-implement)
+- [15. Repository Structure](#15-repository-structure)
 
 ---
 
