@@ -7,6 +7,7 @@
 ## Table of Contents
 
 - [1. Project Overview](#1-project-overview)
+   - [1.1 Repository Structure](#11-repository-structure)
 - [2. Implemented Subject Modules](#2-implemented-subject-modules)
 - [3. High-Level Architecture](#3-high-level-architecture)
 - [4. Backend Microservices](#4-backend-microservices)
@@ -51,7 +52,7 @@ This project is a full-stack, production-style **Pong** web application featurin
 
 The entire app runs in **Docker** using `docker-compose`, with a `Makefile` providing developer-friendly workflows.
 
-### Repository Structure
+### 1.1 Repository Structure
 
 ```text
 ft_transcendence/
