@@ -122,28 +122,6 @@ save-vault-keys:
 	@echo "✅ Vault keys saved to .vault-keys (secure permissions set)"
 	@echo "🎯 You can now use 'make' or 'make start' for automated workflow!"
 
-# Automatically unseal Vault using saved keys
-auto-unseal:
-	@if [ ! -f .vault-keys ]; then \
-		echo "❌ .vault-keys file not found!"; \
-		echo "📝 Run 'make save-vault-keys' first to save your keys"; \
-		exit 1; \
-	fi
-	@echo "🔐 Auto-unsealing Vault..."
-	@if ! docker ps | grep -q vault_service; then \
-		echo "❌ Vault container is not running. Starting it now..."; \
-		docker compose up -d vault-service; \
-		sleep 5; \
-	fi
-	@. ./.vault-keys; \
-	echo "🔓 Unsealing with key 1..."; \
-	docker exec vault_service vault operator unseal $$UNSEAL_KEY_1 > /dev/null; \
-	echo "🔓 Unsealing with key 2..."; \
-	docker exec vault_service vault operator unseal $$UNSEAL_KEY_2 > /dev/null; \
-	echo "🔓 Unsealing with key 3..."; \
-	docker exec vault_service vault operator unseal $$UNSEAL_KEY_3 > /dev/null
-	@echo "✅ Vault unsealed successfully!"
-
 # Quick start without cleaning (docker → auto-unseal)
 start:
 	@echo ""
@@ -194,6 +172,28 @@ start:
 	@echo ""
 	@echo "💡 Tip: Run 'make logs' to follow logs"
 
+# Automatically unseal Vault using saved keys
+auto-unseal:
+	@if [ ! -f .vault-keys ]; then \
+		echo "❌ .vault-keys file not found!"; \
+		echo "📝 Run 'make save-vault-keys' first to save your keys"; \
+		exit 1; \
+	fi
+	@echo "🔐 Auto-unsealing Vault..."
+	@if ! docker ps | grep -q vault_service; then \
+		echo "❌ Vault container is not running. Starting it now..."; \
+		docker compose up -d vault-service; \
+		sleep 5; \
+	fi
+	@. ./.vault-keys; \
+	echo "🔓 Unsealing with key 1..."; \
+	docker exec vault_service vault operator unseal $$UNSEAL_KEY_1 > /dev/null; \
+	echo "🔓 Unsealing with key 2..."; \
+	docker exec vault_service vault operator unseal $$UNSEAL_KEY_2 > /dev/null; \
+	echo "🔓 Unsealing with key 3..."; \
+	docker exec vault_service vault operator unseal $$UNSEAL_KEY_3 > /dev/null
+	@echo "✅ Vault unsealed successfully!"
+
 # Unseal Vault
 unseal: up-vault
 	@echo "🔐 Unsealing Vault..."
@@ -211,10 +211,6 @@ unseal: up-vault
 	read -s -p "Enter Unseal Key 3: " key3; echo; \
 	docker exec -it vault_service vault operator unseal $$key3
 	@echo "✅ Vault should be unlocked"
-
-up-vault:
-	@echo "🚀 Starting vault-service..."
-	docker compose up -d vault-service
 
 # Automated Vault first-time setup (all steps from README lines 38-116)
 vault-init-first-time:
@@ -398,6 +394,13 @@ help:
 # -----------------------------------------------------------------------------
 # Basic checks
 # -----------------------------------------------------------------------------
+build:
+	@echo "🔨 Building all Docker images..."
+	docker compose build
+	
+up-vault:
+	@echo "🚀 Starting vault-service..."
+	docker compose up -d vault-service
 
 logs:
 	@echo "📋 Following logs from all services (Ctrl+C to stop)..."
