@@ -8,7 +8,7 @@
 
 - [1. Project Overview](#1-project-overview)
    - [1.1 Repository Structure](#11-repository-structure)
-- [2. Implemented Subject Modules](#2-implemented-subject-modules)
+- [2. Implemented 42 Subject Modules](#2-implemented-42-subject-modules)
 - [3. High-Level Architecture](#3-high-level-architecture)
 - [4. Backend Microservices](#4-backend-microservices)
   - [4.1 Gateway Service](#41-gateway-service)
@@ -87,9 +87,7 @@ ft_transcendence/
 
 ---
 
-## 2. Implemented Subject Modules
-
-According to the subject, we implemented:
+## 2. Implemented 42 Subject Modules
 
 - **Major – Backend**  
   Full microservice backend: auth, user, gateway, websockets, all containerized.
