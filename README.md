@@ -81,8 +81,6 @@ ft_transcendence/
 │   ├── modsecurity.conf
 ├── vault/
 │   └── README.md            # Manual Vault setup instructions
-└── docs/
-    └── old-readmes/         # Earlier architecture & DB docs
 ```
 
 ---
