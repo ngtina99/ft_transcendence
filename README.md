@@ -164,11 +164,9 @@ Vault (vault-service)
    → provides secrets to backend containers via environment
 ```
 
-Each microservice is in backend/<service-name> with its own main.js, routes, middleware, and database.
-
 ## 4. Backend Microservices
 
-All backend services are **Node.js + Express**, containerized using **Docker**.
+Each microservice is in backend/<service-name> with its own main.js, routes, and database.
 
 ---
 
@@ -199,10 +197,6 @@ All backend services are **Node.js + Express**, containerized using **Docker**.
 - Generates JWT access tokens with `JWT_SECRET`
 - Credential verification via SQLite database
 - Validation middleware + proper error responses
-
-> **Note:** Only JWT authentication is implemented  
-> ❌ No OAuth  
-> ❌ No Two-Factor Authentication (2FA)
 
 ---
 
@@ -395,10 +389,6 @@ Vault container:
 - Gateway validates token before forwarding to services
 - Secret securely sourced from Vault
 
-> Pure JWT authentication  
-> ❌ No 2FA  
-> ❌ No OAuth
-
 ---
 
 ## 10. Logging & Monitoring (ELK) (Major: ELK)
@@ -446,13 +436,10 @@ export const translations = {
 
 LanguageSwitcher component:
 
-Globally wired in router.ts using setupLanguageSwitcher.
-
-Emits a lang:changed event.
-
-Router listens and re-renders the current page with the new language.
-
-All user-facing texts (menus, buttons, dashboard labels, etc.) go through t("key"), giving consistent translations across the app.
+- Globally wired in router.ts using setupLanguageSwitcher.
+- Emits a lang:changed event.
+- Router listens and re-renders the current page with the new language.
+- All user-facing texts (menus, buttons, dashboard labels, etc.) go through t("key"), giving consistent translations across the app.
 
 ## 12. Browser Support (Minor: Browser)
 
@@ -460,10 +447,9 @@ The app is a single-page browser application:
 
 Designed for modern desktop browsers:
 
-- Chrome / Chromium
+- Chrome
 - Firefox
 - Safari
-- Edge (Chromium-based)
 
 Uses:
 
