@@ -287,25 +287,86 @@ Reusable UI components:
 ## 6. Game Modes
 
 ### 6.1 Remote Multiplayer (Major: Remote)
+
 - Join matchmaking queue
 - Server pairs two online players
 - Real-time WebSocket game loop:
-  - Client → paddle movement
-  - Server → authoritative ball physics + scoring
-  - Broadcasts updated game state to both players
-- Final results stored via **user-service**
+  - Client → sends paddle movement & ready events
+  - Server → authoritative ball physics, scoring, win/lose state
+  - Server → broadcasts updated game state to both players
+- Final results are stored via **user-service** as a `ONE_VS_ONE` match
+- Match entries are later used for:
+  - History page
+  - Dashboard stats (wins, losses, points, streaks, etc.)
+
+---
 
 ### 6.2 AI Opponent (Major: AI)
 
 **Location:** `frontend/src/games/AIOpponent.ts`
 
-- Runs client-side only
-- Multiple difficulty levels:
-  - Different prediction + reaction thresholds
-- Logic:
+- Runs **client-side only**
+- Multiple difficulty levels with different:
+  - Prediction accuracy
+  - Reaction time / delay
+  - Max paddle speed
+- Core logic:
   - Reads ball position & velocity
-  - Predicts ball intersection with paddle line
-  - Moves with human-like speed limits
+  - Predicts where the ball will intersect the AI paddle line
+  - Moves towards the target with human-like speed limits (not “perfect”)
+- Results are stored as matches of type `AI`, so:
+  - They appear in history
+  - They contribute to dashboard statistics (but are distinguishable by type)
+
+---
+
+### 6.3 Tournament System (part of Remote – Tournament Match Types)
+
+Tournament matches reuse the same WebSocket engine as normal remote games, but add a small **single-elimination bracket** flow on top.
+
+**Match types used:**
+
+- `TOURNAMENT_1V1` – opening / early round
+- `TOURNAMENT_INTERMEDIATE` – intermediate / semi-final round
+- `TOURNAMENT_FINAL` – final round
+
+**High-level flow:**
+
+1. **Tournament join**
+   - Player selects *Tournament* mode from the game menu.
+   - The client sends a tournament join request to the **WS service** through the gateway.
+   - Server groups players into small brackets (e.g. 4 players → 2 semis + 1 final).
+
+2. **Bracket & room creation**
+   - For each round, the WS service:
+     - Creates WebSocket “rooms” for pairs of players.
+     - Marks the match with the correct `type`:
+       - `TOURNAMENT_1V1` or `TOURNAMENT_INTERMEDIATE` for earlier rounds
+       - `TOURNAMENT_FINAL` for the final
+   - Each room runs a standard Pong match over WebSockets.
+
+3. **Playing the rounds**
+   - Inside a round, the game loop is identical to classic remote:
+     - Clients send paddle updates.
+     - Server computes ball physics and score.
+     - State is broadcast to both players.
+   - When one player reaches the winning condition:
+     - WS service decides the **winner** and **loser**.
+     - The result is sent to **user-service** to be stored as a tournament match entry.
+
+4. **Advancement & elimination**
+   - Winners move to the next round in the bracket.
+   - Losers are eliminated from the tournament.
+   - The final round (`TOURNAMENT_FINAL`) determines the **tournament champion**.
+
+5. **Persistence & dashboard integration**
+   - Every tournament game is saved through **user-service** with:
+     - `type` ∈ {`TOURNAMENT_1V1`, `TOURNAMENT_INTERMEDIATE`, `TOURNAMENT_FINAL`}
+     - scores, players, timestamps, winner
+   - The **Dashboard** can then:
+     - Show how many tournament games were played
+     - Distinguish tournament performance from normal `ONE_VS_ONE` and `AI` matches
+     - Use tournament games in performance charts and recent matches list
 
 ---
 
