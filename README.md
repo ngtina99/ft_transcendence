@@ -29,7 +29,6 @@
 - [11. Internationalization (i18n)](#11-internationalization-i18n-minor-language)
 - [12. Browser Support](#12-browser-support-minor-browser)
 - [13. Service URLs](#13-service-urls)
-- [14. What We Did *Not* Implement](#14-what-we-did-not-implement)
 
 ---
 
@@ -532,15 +531,3 @@ Assuming the WAF resolves to https://<LAN_IP> (printed by the Makefile):
   `https://<LAN_IP>/elasticsearch/`
 
 ---
-
-## 14. What We Did Not Implement
-
-For the evaluator:
-
-❌ No OAuth (no external provider login)  
-❌ No 2FA (no SMS/email/authenticator factor)  
-❌ No native (Android/iOS/desktop) app — browser-only
-
-Everything else listed in **Implemented Subject Modules**  
-is implemented in this project.
-
